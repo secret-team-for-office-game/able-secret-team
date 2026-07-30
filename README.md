@@ -2,20 +2,21 @@
 
 เกมจับทีมลับสำหรับพนักงาน — Next.js 15 + TypeScript + Tailwind + Supabase
 
-## สถานะ: Phase 1 — Foundation ✅
+## สถานะ: Phase 1-5 ครบทุกเฟส ✅
 
-สิ่งที่ทำเสร็จในเฟสนี้:
-- ✅ Next.js 15.5.21 project (patched, 0 vulnerabilities — `npm audit` ผ่าน)
-- ✅ Bright Fantasy UI theme (ฟ้า/ม่วง/แดง ตามสเปก ไม่ใช่ธีมมืด)
-- ✅ Supabase connection (browser + server + admin clients)
-- ✅ Authentication ด้วย **รหัสพนักงาน + รหัสผ่าน** (ไม่มีอีเมลในหน้าตาระบบเลย —
-  ใช้อีเมลสมมติเบื้องหลังเพื่อให้ Supabase Auth ทำงาน)
-- ✅ Database schema เต็ม 15 ตาราง + RLS ครบทุกตาราง
-- ✅ ฟังก์ชันความปลอดภัยหลัก: `my_team()`, `cast_vote()`, `votable_players()`,
-  `ranking_board()`, `my_vote_status()`, `round_summary()` — ออกแบบให้ Team ID
-  และผลโหวตถูก/ผิด **ไม่มีทางหลุดไปที่ Browser ได้เลย** แม้แต่ของตัวเอง
-- ✅ Admin สร้างบัญชีผู้เล่น (ไม่มีอัปโหลดสลิป ไม่มีขั้นตอนรออนุมัติ ตามที่ตกลง)
-- ✅ Build ผ่านจริง: `npm run build` → 6 routes, TypeScript type-check ผ่าน
+- ✅ **Phase 1 — Foundation:** Next.js 15.5.21 (0 vulnerabilities), Supabase connection,
+  Auth ด้วยรหัสพนักงาน+รหัสผ่าน (ไม่มีอีเมลในระบบเลย), Database 15 ตาราง + RLS ครบ
+- ✅ **Phase 2 — Player System:** Player Dashboard, หน้าโหวต (เชื่อม `cast_vote()`),
+  Ranking, Weekly Result (`round_summary()`)
+- ✅ **Phase 3 — Cards & CSR:** My Cards, ใช้การ์ด Revive/Reveal/Team Switch
+  (ผ่านฟังก์ชัน security-definer ที่ตรวจสอบเองฝั่ง Server ทั้งหมด), Admin มอบการ์ด
+  + บันทึกยอด CSR ด้วยมือ (ไม่มีอัปโหลดสลิป/อนุมัติในระบบ ตามที่ตกลง)
+- ✅ **Phase 4 — Admin System:** Dashboard, Round Management (เปิด/ปิดโหวต →
+  Preview → Publish), Export CSV (6 รายงาน)
+- ✅ **Phase 5 — Prize & Production:** คำนวณอันดับ 1-3 อัตโนมัติจากคะแนน,
+  MVP นักสู้จากยอด CSR ที่ Admin กรอก, Lucky Draw + Re-draw พร้อมบันทึกเหตุผล, Audit Log
+
+**Build ผ่านจริง:** `npm run build` → 13 routes, TypeScript type-check ผ่าน, `npm audit` = 0 vulnerabilities
 
 ## Quick Start
 
@@ -26,43 +27,41 @@ npm run dev                  # http://localhost:3000
 ```
 
 ดู `docs/SETUP.md` สำหรับการตั้งค่า Supabase และสร้าง Super Admin คนแรก
+ดู `docs/DEPLOYMENT.md` สำหรับการอัปขึ้น GitHub → Vercel
+
+## SQL ที่ต้องรัน (ตามลำดับ)
+1. `supabase/01_schema.sql`
+2. `supabase/02_rls.sql`
+3. `supabase/03_seed.sql`
+4. `supabase/04_game_functions.sql` ← **ใหม่** (โหวต/การ์ด/รางวัลทั้งหมด)
+
+## ความปลอดภัยที่ยึดตามสเปกข้อ 19
+- Team ID ไม่เคยถูกส่งไปที่ Client เลย (เห็นผ่าน `my_team()` ของตัวเองเท่านั้น)
+- คะแนน/ผลโหวตคำนวณบน Server ทั้งหมด (`admin_publish_round()`)
+- Service Role Key ใช้เฉพาะในไฟล์ API route ฝั่ง server เท่านั้น
+- ทุก Admin action ตรวจสิทธิ์ผ่าน `requireAdmin()` ก่อนเสมอ
+- ทุกการสุ่ม/ประมวลผลบันทึก `audit_logs`
+- `admin_publish_round()` เช็ค `status = 'published'` กันกดซ้ำ (idempotent)
+- Card usage (`use_reveal_card`, `use_revive_card`, `use_team_switch_card`) ตรวจสอบ
+  ความเป็นเจ้าของการ์ด + สถานะ + เงื่อนไขทั้งหมดฝั่ง Server ก่อนดำเนินการ
 
 ## โครงสร้างโปรเจกต์
 
 ```
 able-secret-team/
 ├── src/app/
-│   ├── page.tsx              # Login (รหัสพนักงาน + รหัสผ่าน)
-│   ├── route/page.tsx        # ตัวส่งไปหน้าที่ถูกต้องตาม role
-│   ├── play/page.tsx         # หน้าผู้เล่น (Phase 1: placeholder แสดงทีม)
-│   ├── admin/page.tsx        # หน้า Admin (Phase 1: สร้างบัญชีผู้เล่น)
-│   └── api/admin/create-player/route.ts
-├── src/lib/
-│   ├── types.ts
-│   ├── supabase.ts           # browser/admin clients + employeeIdToEmail()
-│   └── auth.ts                # server client + requireAdmin()
-├── supabase/
-│   ├── 01_schema.sql          # 15 ตาราง
-│   ├── 02_rls.sql             # RLS + security functions
-│   └── 03_seed.sql            # teams, card_types, system_settings
-└── docs/SETUP.md
+│   ├── page.tsx                    # Login (รหัสพนักงาน + รหัสผ่าน)
+│   ├── route/page.tsx              # ตัวส่งไปหน้าที่ถูกต้องตาม role
+│   ├── play/page.tsx                # ผู้เล่น: ทีม/โหวต/การ์ด/ผล/อันดับ
+│   ├── admin/page.tsx               # Admin: Dashboard/สร้างผู้เล่น/รอบ/การ์ด/รางวัล/audit/export
+│   └── api/
+│       ├── vote/route.ts
+│       ├── cards/use/route.ts
+│       └── admin/{create-player,rounds,cards,prizes,export}/route.ts
+├── src/lib/{types,supabase,auth}.ts
+├── supabase/{01_schema,02_rls,03_seed,04_game_functions}.sql
+└── docs/{SETUP,DEPLOYMENT,ADMIN_MANUAL,PLAYER_GUIDE}.md
 ```
 
-## กติกาเกม (สรุปย่อ — อ้างอิงจาก Game Design Document ที่ยืนยันแล้ว)
-
-- 3 ทีมลับ: 🐬 โลมา / 🐳 วาฬ / 🦈 ฉลาม — สุ่มเกลี่ยจำนวน ผู้เล่นไม่รู้ทีมคนอื่น
-- ทุกวันพฤหัสโหวต 1 คนที่คิดว่าเป็นศัตรู · ศุกร์ Admin ประมวลผล (Preview→Publish)
-- โหวตถูกทีม +10 / โหวตทีมเดียวกัน -5 / ไม่โหวต 0 — **ผู้เล่นไม่เห็นว่าตัวเองโหวตถูกหรือผิด**
-- คัดคนโหวตแม่นน้อยสุดออกเป็น Ghost Mode (ยัง login/ดูผลได้ แต่โหวต/ถูกโหวตไม่ได้)
-- การ์ดพิเศษ 3 แบบ (Revive/Reveal/Team Switch) — **ไม่มีร้านค้าในเว็บ**
-  จ่ายเงินนอกระบบ Admin มอบการ์ดให้ตรงในหน้า Admin
-- รางวัล: อันดับ 1-3 + MVP นักสู้ (Admin กรอกยอดซื้อการ์ดด้วยมือ) + Lucky Draw
-- สมัครเข้าเกม: **ไม่มีการสมัครเองในเว็บ** — Admin เก็บเงินบริจาค CSR นอกระบบ
-  แล้วสร้างบัญชี (รหัสพนักงาน+รหัสผ่าน) ให้ตรงๆ ใช้งานได้ทันที
-
-## Phase ถัดไป (ยังไม่ทำ)
-
-- **Phase 2:** Player Dashboard เต็มรูปแบบ, หน้าโหวต, Ranking, Weekly Result
-- **Phase 3:** My Cards (ใช้การ์ด), Admin มอบการ์ด/บันทึกยอดซื้อ
-- **Phase 4:** Admin Dashboard เต็ม (Team Management, Round Processing, Reports/CSV)
-- **Phase 5:** Prize Calculation, Lucky Draw, Audit Log UI, Testing, Deployment
+## กติกาเกม (สรุปย่อ)
+ดูรายละเอียดเต็มใน `docs/ADMIN_MANUAL.md` และ `docs/PLAYER_GUIDE.md`
