@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase";
 
-type Tab = "dash" | "create" | "rounds" | "cards" | "prizes" | "audit" | "export";
+type Tab = "dash" | "create" | "players" | "rounds" | "cards" | "prizes" | "audit" | "export";
 
 export default function Admin() {
   const supabase = supabaseBrowser();
@@ -32,7 +32,7 @@ export default function Admin() {
   );
 
   const tabs: [Tab, string][] = [
-    ["dash", "Dashboard"], ["create", "➕ สร้างผู้เล่น"], ["rounds", "รอบ & โหวต"],
+    ["dash", "Dashboard"], ["create", "➕ สร้างผู้เล่น"], ["players", "👥 ผู้เล่น"], ["rounds", "รอบ & โหวต"],
     ["cards", "การ์ด & CSR"], ["prizes", "รางวัล"], ["audit", "Audit Log"], ["export", "Export CSV"],
   ];
 
@@ -55,6 +55,7 @@ export default function Admin() {
 
       {tab === "dash" && <Dash />}
       {tab === "create" && <CreatePlayer flash={flash} />}
+      {tab === "players" && <Players flash={flash} />}
       {tab === "rounds" && <Rounds flash={flash} />}
       {tab === "cards" && <Cards flash={flash} />}
       {tab === "prizes" && <Prizes flash={flash} />}
@@ -167,6 +168,82 @@ function CreatePlayer({ flash }: any) {
 }
 
 /* ---------- Rounds ---------- */
+/* ---------- Player Management ---------- */
+function Players({ flash }: any) {
+  const supabase = supabaseBrowser();
+  const [rows, setRows] = useState<any[]>([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [{ data: players }, { data: assignments }] = await Promise.all([
+      supabase.from("profiles").select("id,employee_id,full_name,nickname,department,player_status,total_score,revive_count").eq("role", "player").order("employee_id"),
+      supabase.from("player_team_assignments").select("player_id, teams(team_name, icon)").is("effective_to", null),
+    ]);
+    const teamByPlayer: Record<string, any> = {};
+    (assignments || []).forEach((a: any) => { teamByPlayer[a.player_id] = a.teams; });
+    setRows((players || []).map((p: any) => ({ ...p, team: teamByPlayer[p.id] })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function revive(employeeId: string) {
+    if (!confirm(`ยืนยันชุบชีวิต ${employeeId}?`)) return;
+    setBusyId(employeeId);
+    const res = await fetch("/api/admin/revive", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ employeeId }),
+    });
+    const json = await res.json();
+    setBusyId(null);
+    if (json.error) return flash("ผิดพลาด: " + json.error);
+    flash("✓ ชุบชีวิตแล้ว");
+    load();
+  }
+
+  const qLower = q.trim().toLowerCase();
+  const filtered = rows.filter((r) => !qLower || r.employee_id.toLowerCase().includes(qLower) || (r.nickname || r.full_name).toLowerCase().includes(qLower));
+
+  return (
+    <div className="card">
+      <h2>👥 จัดการผู้เล่น</h2>
+      <p className="lead">ดูรายชื่อทั้งหมด + ทีมจริง (Admin เท่านั้น) · กด &quot;Revive&quot; ให้ผู้เล่นที่เสียชีวิตหลังได้รับการติดต่อ+โอนเงินแล้ว</p>
+      <input placeholder="ค้นหารหัสพนักงานหรือชื่อ…" value={q} onChange={(e) => setQ(e.target.value)} className="w-full mb-3" />
+      {loading ? <p className="lead">กำลังโหลด…</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-ink-soft text-xs text-left">
+              <th className="py-2">รหัสพนักงาน</th><th>ชื่อ</th><th>ทีม</th><th>สถานะ</th><th className="text-right">คะแนน</th><th className="text-right">ชุบชีวิตแล้ว</th><th></th>
+            </tr></thead>
+            <tbody>
+              {filtered.map((p) => (
+                <tr key={p.id} className="border-b border-line">
+                  <td className="py-2 font-bold">{p.employee_id}</td>
+                  <td>{p.nickname || p.full_name}</td>
+                  <td>{p.team ? `${p.team.icon} ${p.team.team_name}` : "—"}</td>
+                  <td><span className={`pill ${p.player_status === "active" ? "on" : "off"}`}>{p.player_status === "active" ? "Alive" : p.player_status === "ghost" ? "Dead" : "Disqualified"}</span></td>
+                  <td className="text-right font-bold">{p.total_score}</td>
+                  <td className="text-right">{p.revive_count || 0}</td>
+                  <td>
+                    {p.player_status === "ghost" && (
+                      <button className="btn btn-gold btn-sm" onClick={() => revive(p.employee_id)} disabled={busyId === p.employee_id}>
+                        {busyId === p.employee_id ? "…" : "Revive"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && <tr><td colSpan={7} className="py-4 text-center text-ink-soft">ไม่พบผู้เล่น</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Rounds({ flash }: any) {
   const [rounds, setRounds] = useState<any[]>([]);
   const [preview, setPreview] = useState<any>(null);
@@ -211,7 +288,15 @@ function Rounds({ flash }: any) {
       {preview && (
         <div className="card">
           <h3>Preview (ยังไม่ประกาศ)</h3>
-          <p className="lead">จะคัดออก {preview.eliminationCount} คน (เฉพาะผู้ที่มีคนโหวต)</p>
+          <p className="lead">
+            จะคัดออก {(preview.eliminated || []).length} คน (Admin ตั้งไว้ {current.elimination_value} คน)
+            {(preview.eliminated || []).length > current.elimination_value && (
+              <span className="text-blood font-bold"> — มีคนไทกันที่จุดตัด ระบบคัดออกทุกคนที่ไทตามกติกา</span>
+            )}
+          </p>
+          {preview.wrongTargetPenaltyCount > 0 && (
+            <p className="lead">⚠️ มี {preview.wrongTargetPenaltyCount} คนโดนเพื่อนร่วมทีมโหวตผิด — โดนหักคะแนนเพิ่ม (ครั้งเดียว/คน)</p>
+          )}
           <ul className="pl-5">
             {(preview.eliminated || []).map((e: any) => (<li key={e.playerId} className="font-bold">{e.name} — {e.votesReceived} โหวต</li>))}
             {(!preview.eliminated || preview.eliminated.length === 0) && <li>ไม่มีใครถูกคัดออก</li>}
@@ -226,7 +311,7 @@ function Rounds({ flash }: any) {
 /* ---------- Cards & CSR ---------- */
 function Cards({ flash }: any) {
   const [employeeId, setEmployeeId] = useState("");
-  const [cardCode, setCardCode] = useState("reveal");
+  const [cardCode, setCardCode] = useState("revive");
   const [qty, setQty] = useState(1);
   const [amount, setAmount] = useState(80);
   const [err, setErr] = useState("");
@@ -250,8 +335,8 @@ function Cards({ flash }: any) {
       <p className="lead">ใช้หลังผู้เล่นจ่ายเงินซื้อการ์ดนอกระบบแล้ว — ยอดนี้ใช้จัดอันดับ MVP นักสู้</p>
       <div className="field"><label>รหัสพนักงาน</label><input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="EMP1234" /></div>
       <div className="field"><label>ชนิดการ์ด</label>
-        <select value={cardCode} onChange={(e) => setCardCode(e.target.value)}>
-          <option value="revive">💗 Revive Card</option><option value="reveal">🔮 Reveal Card</option><option value="team_switch">🔄 Team Switch Card</option>
+        <select value={cardCode} onChange={(e) => setCardCode(e.target.value)} disabled>
+          <option value="revive">💗 Revive Card</option>
         </select></div>
       <div className="grid grid-cols-2 gap-3">
         <div className="field"><label>จำนวน</label><input type="number" value={qty} onChange={(e) => setQty(+e.target.value)} /></div>

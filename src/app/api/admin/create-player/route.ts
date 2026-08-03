@@ -93,18 +93,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // grant the free starter card (revive, per default — Admin can change source/type later)
-  const { data: starterCard } = await db.from("card_types").select("id").eq("card_code", "revive").maybeSingle();
-  if (starterCard) {
-    await db.from("player_cards").insert({
-      player_id: profileId,
-      card_type_id: starterCard.id,
-      source: "starter",
-      granted_by: "system",
-      status: "available",
-    });
-  }
-
   // record the CSR registration amount (informational, no slip/approval)
   const { data: settings } = await db.from("system_settings").select("csr_registration_amount").eq("id", 1).single();
   await db.from("csr_transactions").insert({

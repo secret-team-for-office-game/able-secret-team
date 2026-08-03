@@ -98,6 +98,8 @@ function Home({ me, team, goTo }: { me: Profile; team: TeamDef | null; goTo: (t:
     })();
   }, []);
 
+  const isDead = me.player_status !== "active";
+
   return (
     <div>
       {team ? (
@@ -115,24 +117,32 @@ function Home({ me, team, goTo }: { me: Profile; team: TeamDef | null; goTo: (t:
 
       <div className="grid grid-cols-2 gap-3 mt-3">
         <div className="stat text-center"><div className="k">⭐ คะแนนสะสม</div><div className="v">{me.total_score}</div></div>
-        <div className="stat text-center"><div className="k">สถานะ</div><div className="v" style={{ fontSize: 16 }}>{me.player_status === "active" ? "✅ Active" : "👻 Ghost"}</div></div>
+        <div className="stat text-center"><div className="k">สถานะ</div><div className="v" style={{ fontSize: 16 }}>{isDead ? "💀 เสียชีวิตแล้ว" : "✅ Active"}</div></div>
       </div>
 
-      <div className="card text-center mt-3">
-        {round?.status === "voting_open" ? (
-          voted ? (
-            <><div className="text-4xl">✅</div><h3>โหวตรอบนี้ส่งแล้ว!</h3><p className="lead">รอ Admin ประกาศผลวันศุกร์</p></>
+      {isDead ? (
+        <div className="card text-center mt-3" style={{ borderColor: "var(--bad)" }}>
+          <div className="text-4xl">💀</div>
+          <h3>คุณเสียชีวิตแล้ว</h3>
+          <p className="lead">ถ้ามีการ์ด 💗 Revive ไปที่เมนู &quot;🃏 การ์ด&quot; เพื่อชุบชีวิตตัวเองได้เลย<br/>ถ้ายังไม่มีการ์ด กรุณาติดต่อ Admin พร้อมแจ้ง Username หลังโอนเงิน</p>
+        </div>
+      ) : (
+        <div className="card text-center mt-3">
+          {round?.status === "voting_open" ? (
+            voted ? (
+              <><div className="text-4xl">✅</div><h3>โหวตรอบนี้ส่งแล้ว!</h3><p className="lead">รอ Admin ประกาศผลวันศุกร์</p></>
+            ) : (
+              <>
+                <div className="text-4xl">🗳️</div><h3>{round.title} — เปิดโหวตอยู่!</h3>
+                <p className="lead">เลือก 1 คนที่คุณคิดว่าเป็นทีมศัตรู</p>
+                <button className="btn btn-primary btn-block" onClick={() => goTo("vote")}>ไปโหวต →</button>
+              </>
+            )
           ) : (
-            <>
-              <div className="text-4xl">🗳️</div><h3>{round.title} — เปิดโหวตอยู่!</h3>
-              <p className="lead">เลือก 1 คนที่คุณคิดว่าเป็นทีมศัตรู</p>
-              <button className="btn btn-primary btn-block" onClick={() => goTo("vote")}>ไปโหวต →</button>
-            </>
-          )
-        ) : (
-          <><div className="text-4xl">⏳</div><h3>ยังไม่เปิดโหวตสัปดาห์นี้</h3><p className="lead">รอ Admin เปิดรอบโหวต</p></>
-        )}
-      </div>
+            <><div className="text-4xl">⏳</div><h3>ยังไม่เปิดโหวตสัปดาห์นี้</h3><p className="lead">รอ Admin เปิดรอบโหวต</p></>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -174,10 +184,18 @@ function VoteTab({ me, flash }: { me: Profile; flash: (m: string) => void }) {
   }
 
   if (loading) return <div className="card">กำลังโหลด…</div>;
+  if (me.player_status !== "active") return (
+    <div className="card text-center" style={{ borderColor: "var(--bad)" }}>
+      <div className="text-4xl">💀</div>
+      <h2>คุณเสียชีวิตแล้ว</h2>
+      <p className="lead">ถ้ามีการ์ด 💗 Revive ไปที่เมนู &quot;🃏 การ์ด&quot; เพื่อชุบชีวิตตัวเองได้เลย<br/>ถ้ายังไม่มีการ์ด กรุณาติดต่อ Admin พร้อมแจ้ง Username หลังโอนเงิน</p>
+    </div>
+  );
   if (!round || round.status !== "voting_open") return <div className="card"><h2>โหวต</h2><p className="lead">ยังไม่เปิดโหวตในขณะนี้</p></div>;
   if (voted) return <div className="card"><h2>{round.title}</h2><p className="lead">คุณส่งโหวตในรอบนี้แล้ว ✅ — เปลี่ยนไม่ได้หลังส่ง</p></div>;
 
-  const filtered = players.filter((p) => !q || (p.nickname || p.full_name).includes(q) || (p.department || "").includes(q));
+  const qLower = q.trim().toLowerCase();
+  const filtered = players.filter((p) => !qLower || (p.nickname || p.full_name).toLowerCase().includes(qLower) || (p.department || "").toLowerCase().includes(qLower));
 
   return (
     <div className="card">
@@ -211,6 +229,7 @@ function VoteTab({ me, flash }: { me: Profile; flash: (m: string) => void }) {
     </div>
   );
 }
+
 
 /* ---------- Cards ---------- */
 function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flash: (m: string) => void }) {
@@ -248,6 +267,11 @@ function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flas
       load(); reload();
       return;
     }
+    if (code === "revive") {
+      // Revive can target the player's own account too (per current rules).
+      setUseTarget({ card, mode: "revive" });
+      return;
+    }
     setUseTarget({ card, mode: code });
   }
 
@@ -259,16 +283,21 @@ function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flas
     if (json.error) return flash(json.error);
     if (code === "reveal") setRevealResult(json.data);
     else flash("✓ ชุบชีวิตสำเร็จ!");
-    load();
+    load(); reload();
   }
 
   if (loading) return <div className="card">กำลังโหลด…</div>;
+
+  // Self is offered as a revive target too, alongside ghosts (self-revive allowed).
+  const reviveTargets = me.player_status === "ghost"
+    ? [{ player_id: me.id, full_name: me.full_name, nickname: me.nickname, department: me.department, avatar_url: me.avatar_url }, ...ghosts.filter((g) => g.player_id !== me.id)]
+    : ghosts;
 
   return (
     <div>
       <div className="card">
         <h2>🃏 การ์ดของฉัน</h2>
-        <p className="lead">การ์ดพิเศษ — ซื้อเพิ่มนอกระบบ แจ้ง Admin หลังโอนเงิน</p>
+        <p className="lead">การ์ดพิเศษ ชุบชีวิต — ซื้อเพิ่มนอกระบบ แจ้ง Admin หลังโอนเงิน</p>
         <div className="grid grid-cols-3 gap-2.5">
           {cards.map((c) => (
             <div key={c.id} className="border-2 border-line rounded-2xl p-3 text-center bg-white">
@@ -278,7 +307,7 @@ function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flas
               {c.status === "available" && <button className="btn btn-primary btn-sm" onClick={() => useCard(c)}>ใช้การ์ด</button>}
             </div>
           ))}
-          {cards.length === 0 && <p className="lead">ยังไม่มีการ์ด</p>}
+          {cards.length === 0 && <p className="lead">ยังไม่มีการ์ด — ติดต่อ Admin หลังโอนเงินเพื่อรับการ์ด</p>}
         </div>
       </div>
 
@@ -286,7 +315,7 @@ function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flas
         <PickerModal title="🔮 เลือกคนที่จะส่อง" items={others.map((p) => ({ id: p.player_id, label: p.nickname || p.full_name }))} onPick={confirmTarget} onClose={() => setUseTarget(null)} />
       )}
       {useTarget?.mode === "revive" && (
-        <PickerModal title="💗 เลือกคนที่จะชุบชีวิต" items={ghosts.map((p) => ({ id: p.player_id, label: p.nickname || p.full_name }))} onPick={confirmTarget} onClose={() => setUseTarget(null)} empty="ตอนนี้ไม่มีใครอยู่ Ghost Mode" />
+        <PickerModal title="💗 เลือกคนที่จะชุบชีวิต (เลือกตัวเองได้)" items={reviveTargets.map((p) => ({ id: p.player_id, label: (p.nickname || p.full_name) + (p.player_id === me.id ? " (ตัวคุณเอง)" : "") }))} onPick={confirmTarget} onClose={() => setUseTarget(null)} empty="ตอนนี้ไม่มีใครอยู่ในสถานะเสียชีวิต" />
       )}
       {revealResult && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(43,42,74,.45)" }} onClick={() => setRevealResult(null)}>
@@ -370,7 +399,7 @@ function ResultTab() {
 function RankTab({ me }: { me: Profile }) {
   const supabase = supabaseBrowser();
   const [rows, setRows] = useState<RankingRow[]>([]);
-  useEffect(() => { supabase.rpc("ghost_players").then(({ data }) => setRows((data as RankingRow[]) || [])); }, []);
+  useEffect(() => { supabase.rpc("ranking_board").then(({ data }) => setRows((data as RankingRow[]) || [])); }, []);
   return (
     <div className="card">
       <h2>🏆 อันดับ</h2>

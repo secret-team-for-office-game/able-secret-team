@@ -140,7 +140,7 @@ begin
 
   -- 4) snapshot player_round_results for every player
   insert into player_round_results (round_id, player_id, score_change, total_score_after_round, votes_received, elimination_status)
-  select p.id, p_round_id,
+  select p_round_id, p.id,
          coalesce((select sum(score_awarded) from votes where round_id=p_round_id and voter_id=p.id), 0),
          p.total_score,
          coalesce((select count(*) from votes where round_id=p_round_id and target_player_id=p.id), 0),
