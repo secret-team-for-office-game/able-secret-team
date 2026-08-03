@@ -223,13 +223,12 @@ function CardsTab({ me, reload, flash }: { me: Profile; reload: () => void; flas
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [{ data: myCards }, { data: rb }] = await Promise.all([
+    const [{ data: myCards }, { data: gp }] = await Promise.all([
       supabase.from("player_cards").select("*, card_types(*)").eq("player_id", me.id),
-      supabase.rpc("ranking_board"),
+      supabase.rpc("ghost_players"),
     ]);
     setCards((myCards as any) || []);
-    const g = (rb || []).filter((r: any) => r.player_status === "ghost");
-    setGhosts(g.map((r: any) => ({ player_id: r.full_name, full_name: r.full_name, nickname: r.nickname, department: null, avatar_url: null })));
+    setGhosts((gp as VotablePlayer[]) || []);
     const { data: vp } = await supabase.rpc("votable_players");
     setOthers((vp as VotablePlayer[]) || []);
     setLoading(false);
@@ -371,7 +370,7 @@ function ResultTab() {
 function RankTab({ me }: { me: Profile }) {
   const supabase = supabaseBrowser();
   const [rows, setRows] = useState<RankingRow[]>([]);
-  useEffect(() => { supabase.rpc("ranking_board").then(({ data }) => setRows((data as RankingRow[]) || [])); }, []);
+  useEffect(() => { supabase.rpc("ghost_players").then(({ data }) => setRows((data as RankingRow[]) || [])); }, []);
   return (
     <div className="card">
       <h2>🏆 อันดับ</h2>
